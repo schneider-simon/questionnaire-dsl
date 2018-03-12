@@ -1,0 +1,21 @@
+.ql-sample-output textarea[name=ql_input] {
+    height: calc(100vh - 50px);
+    min-height: 500px;
+}
+
+.ql-form {
+    padding: 10px;
+    background: #eeeeee;
+    border: 1px solid #cccccc;
+    font-family: "Times New Roman", serif;
+}
+
+.ql-form h1 {
+    font-size: 18px;
+    font-weight: bold;
+    border-bottom: 1px solid #dddddd;
+}
+
+.state-output-container textarea {
+    min-height: 500px;
+}

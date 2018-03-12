@@ -1,0 +1,155 @@
+/*
+ * Grammar for Questionnaire Language Styling
+ *
+ */
+
+{
+
+}
+
+start = lb* stylesheet:stylesheet lb* { return stylesheet}
+
+// Stylesheet
+stylesheet
+ = _ "stylesheet" _ id:identifier lb* page:page*{
+    return new Nodes.Stylesheet( id, page);
+}
+
+// Page
+page
+ = _ "page" _ id:identifier _ block:pageBlock lb*{
+    return new Nodes.Page( id, block );
+}
+
+pageBlock
+ = "{" lb* body:(section / default)+ lb* "}" {
+    return body;
+}
+
+// Section
+section
+ = _ "section" _ name:stringLiteral lb* block:sectionBody{
+    return new Nodes.Section( name, block );
+}
+
+sectionBody
+ = sectionBlockQuoted / sectionBlockUnquoted
+
+sectionBlockQuoted
+ = _ "{" lb* body:sectionBlockUnquoted+ lb* "}" lb* {
+    return body
+}
+
+sectionBlockUnquoted
+ = _ body:(question / section / default) lb* {
+    return body
+}
+
+// Question
+question
+ = _ "question" _ id:identifier lb* widget:widget? lb*{
+    return new Nodes.QuestionStyle( id, widget );
+}
+
+// Default
+default = defaultBlockQuoted / defaultBlockUnquoted
+
+defaultBlockQuoted
+ = _ "default" _ type:type _ "{" lb* args:defaultBlockBody+ lb* "}" lb* {
+    return new Nodes.DefaultStyle(type, args);
+}
+
+defaultBlockUnquoted
+ = _ "default" _ type:type lb* args:defaultBlockBody lb* {
+    return new Nodes.DefaultStyle(type, args);
+}
+
+defaultBlockBody
+ = (widget / style)
+
+// Widget
+widget
+ = _ "widget" _ id:identifier options:widgetOptions? lb* {
+    return new Nodes.WidgetAttribute("widget", id, options);
+}
+
+// WidgetOptions
+widgetOptions
+ = "(" _ args:arguments _ ")" lb* {
+    return args;
+}
+// Arguments, komma separated list
+arguments
+  = head:stringLiteral rest:(_ "," _ r:arguments{ return r; })? {
+    return rest != null ? [head].concat(rest) : [head];
+}
+
+// Style element
+style
+ = _ id:identifier _ ":" _ args:styleValues lb*{
+    return new Nodes.BaseAttribute(id, args);
+}
+
+// Style values
+styleValues
+ = numberLiteral / stringLiteral / color
+
+// Preliminary color code
+// TODO: make hexadecimal
+color
+ = _ code:(["#"][0-9]+){
+    return "#".concat(code[1].join(""))
+}
+
+// Identifier?
+identifier
+ = chars:([a-zA-Z]+) {
+    return chars.join("");
+}
+
+// Boolean Literal
+booleanLiteral
+  = Literal:("true" / "false") {
+    return Literal == "true"
+}
+
+// Integer
+numberLiteral
+  = digits:([-]?[0-9]+) {
+    return parseInt(digits.join(""), 10)
+}
+
+// String Literal, Currently only support double quoted String
+stringLiteral
+ = '"' chars:doubleString* '"'{
+    return chars.join('');
+}
+
+// String denoted with double quoted
+doubleString
+  = !('"' / "\\") char:. { return char; }
+  / "\\" sequence:escapeSequence { return sequence; }
+
+escapeSequence
+  = "'"
+  / '"'
+  / "\\"
+  / "b"  { return "\b";   }
+  / "f"  { return "\f";   }
+  / "n"  { return "\n";   }
+  / "r"  { return "\r";   }
+  / "t"  { return "\t";   }
+  / "v"  { return "\x0B"; }
+
+// Supported types
+type = "boolean" / "money" / "date" / "integer" / "float" / "text"
+
+value = booleanLiteral / identifier / numberLiteral / stringLiteral
+
+// Single line comments
+comment = "//" (![\n] .)*
+
+// White spaces and new lines
+ws = [ \t]
+_ = (ws / comment)*
+lb = [ \t\r\n] / comment

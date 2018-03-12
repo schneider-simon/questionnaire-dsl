@@ -1,0 +1,254 @@
+/*
+ * Grammar for the Questionnaire Language
+ *
+ */
+
+{
+  // Dictionary of operators to their tsc definition
+  let operations = {
+              //"!"  : Node.Negation,
+              "&&" : Nodes.And,
+              "||" : Nodes.Or,
+              "<=" : Nodes.SmallerThanOrEqual,
+              ">=" : Nodes.LargerThanOrEqual,
+              "!=" : Nodes.NotEqual,
+              "==" : Nodes.Equals,
+              "<"  : Nodes.SmallerThan,
+              ">"  : Nodes.LargerThan,
+              "+"  : Nodes.Addition,
+              "-"  : Nodes.Subtraction,
+              "*"  : Nodes.Multiplication,
+              "/"  : Nodes.Division
+            }
+
+  // Dictionary of types to their tsc definition
+  let types = {
+                  "boolean" : FieldType.Boolean,
+                  "date" : FieldType.Date,
+                  "money" : FieldType.Money,
+                  "integer" : FieldType.Integer,
+                  "float" : FieldType.Float,
+                  "text" : FieldType.Text,
+                }
+
+  // Building an expression
+  function buildExpression(head, tail) {
+    return tail.reduce(function(left, curr) {
+      const Operation = operations[curr[1]];
+      return new Operation(left, curr[3]);
+    }
+    , head);
+  }
+
+  // Add location to every node
+  function processNode(node){
+    node.setLocation(location());
+    return node;
+  }
+}
+
+// Start node
+start = lb* forms:form+ _ lb* { return forms }
+
+// Unary operation
+unaryOps = "!"
+
+// Boolean operations
+boolOps = "&&" / "||"
+
+// Compartive operations
+compOps = "<=" / ">=" / "!=" / "==" / "<" / ">"
+
+// Addative operations
+addOps = "+" / "-"
+
+// Multiplicant operations
+multOps = "*" / "/"
+
+// All includede aritmic operations
+aritmicOps = multOps / addOps
+
+// Literal types  supported
+literalTypes = "boolean" / "money" / "date" / "integer" / "float" / "text"
+
+// Returns the tsc object of the literal
+type
+ = literalType:literalTypes {
+    return types[literalType];
+}
+
+// Supported types
+fieldType
+ = "money"
+ / "date"
+ / "integer"
+ / "boolean"
+
+// Returns a tsc Field object
+field
+ = _ label:stringLiteral lb* id:identifier _ ":" _ type:type lb* expr:("=" lb* expression)? lb*{
+    var name = id.identifier;
+    if (expr)
+        return new Nodes.ComputedField(name, label.value, type, expr[2]);
+    let fieldNode = new Nodes.Question(name, label.value, type);
+    return processNode(fieldNode);
+}
+
+// Returns a list of fields and/or if statements
+block
+ = "{" lb* e:(field / if)+ lb* "}" {
+     return e;
+}
+
+// Returns a tsc FormNode object
+form
+ = formToken _ id:identifier _ block:block lb*{
+     let formNode = new Nodes.FormNode(id.identifier, block);
+     return processNode(formNode);
+}
+
+// Returns a tsc IfCondition object
+if
+ = _ ifToken _ predicate:expression _ block:block lb* {
+     let ifNode = new Nodes.IfCondition(predicate, block);
+     return processNode(ifNode);
+}
+
+// Initiates an expression
+expression
+ = expr:boolExpr {
+    return expr;
+}
+
+// BooleanExpression
+boolExpr
+  = _ head:compExpr _ tail:(_(boolOps)_ compExpr)+ _{
+    let boolExprNode = buildExpression(head, tail);
+    return processNode(boolExprNode);
+
+  }
+  / compExpr
+
+// ComparisonExpression
+compExpr
+  = _ head:additiveExpr _ tail:(_(compOps)_ additiveExpr)+ _{
+    let compExprNode = buildExpression(head, tail);
+    return processNode(compExprNode);
+  }
+  / additiveExpr
+
+// AdditiveExpression
+additiveExpr
+  = _ head:multiplicativeExpr _ tail:(_(addOps)_ multiplicativeExpr)+ _{
+    let additiveExprNode = buildExpression(head, tail);
+    return processNode(additiveExprNode);
+  }
+  / multiplicativeExpr
+
+// MultiplicativeExpression
+multiplicativeExpr
+  = _ head:primary _ tail:(_(multOps)_ primary)+ _{
+    let multiplicativeExprNode = buildExpression(head, tail);
+    return processNode(multiplicativeExprNode);
+  }
+  / primary
+
+primary
+  = value
+  / "("_ expr:boolExpr _ ")" { return expr; }
+  / unaryExpr
+
+// UnaryExpression
+unaryExpr
+ = _ op:unaryOps value:primary _ {
+    let unaryExprNode = new Nodes.Negation(value);
+    return processNode(unaryExprNode);
+}
+
+// Identifier
+identifier
+ = !keywords alphabet {
+    let identifierNode = new Nodes.VariableIdentifier(text());
+    return processNode(identifierNode);
+}
+
+// Boolean Literal
+booleanLiteral
+ = booleanToken {
+    let booleanLiteralNode = new Nodes.BooleanLiteral(text() == "true");
+    return processNode(booleanLiteralNode);
+}
+
+// Alphabet characters
+alphabet
+ = [a-zA-Z]+
+
+// Integer
+numberLiteral
+ = minus:[-]? digits:([0-9\.]+) {
+    let amount = digits.join("");
+    if (minus)
+        amount = minus.concat(amount);
+    let numberLiteralNode = Nodes.NumberLiteral.fromString(amount);
+    return processNode(numberLiteralNode);
+}
+
+//Date
+dateLiteral
+ = [0-9][0-9] dateSeparator [0-9][0-9] dateSeparator [0-9][0-9][0-9][0-9]{
+    let dateLiteralNode = Nodes.DateLiteral.fromString(text());
+    return processNode(dateLiteralNode);
+}
+
+dateSeparator
+ = [\.]
+
+// String Literal, Currently only support double quoted String
+stringLiteral
+ = '"' chars:doubleQuotedString* '"'{
+    let stringLiteralNode = new Nodes.StringLiteral(chars.join(''));
+    return processNode(stringLiteralNode);
+}
+
+// Double quoted string pattern
+doubleQuotedString
+  = !('"' / "\\") char:. { return char; }
+  / "\\" sequence:escapeSequence { return sequence; }
+
+// Escape sequences for inside string
+escapeSequence
+  = "'"
+  / '"'
+  / "\\"
+  / "b"  { return "\b";   }
+  / "f"  { return "\f";   }
+  / "n"  { return "\n";   }
+  / "r"  { return "\r";   }
+  / "t"  { return "\t";   }
+  / "v"  { return "\x0B"; }
+
+// Value
+value
+ = identifier
+ / dateLiteral
+ / numberLiteral
+ / stringLiteral
+ / booleanLiteral
+
+booleanToken
+ = "true"  !alphabet
+ / "false" !alphabet
+
+ifToken = "if" !alphabet
+
+formToken = "form" !alphabet
+
+keywords = booleanToken
+
+// Single line comments
+comment = "//" (![\n] .)*
+
+// White spaces and new lines
+ws = [ \t]
+_ = (ws / comment)*
+lb = [ \t\r\n] / comment
